@@ -23,8 +23,11 @@ app.use(
   })
 );
 
-app.use("/api/tts", express.text({ type: "*/*", limit: "50mb" }));
+// parser JSON para todo
 app.use(express.json({ limit: "50mb" }));
+
+// parser de texto SOLO para /api/tts
+app.use("/api/tts", express.text({ type: "*/*", limit: "50mb" }));
 
 // compartir elevenlabs con rutas
 app.locals.elevenlabs = elevenlabs;

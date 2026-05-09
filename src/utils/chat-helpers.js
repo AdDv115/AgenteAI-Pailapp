@@ -1,9 +1,8 @@
-import { Readable } from "node:stream";
 import { conectarDB } from "../db/mongo.js";
 
-// cache de conexión Mongo
 let db;
 
+// conexión única a Mongo
 export async function getDB() {
   db ??= await conectarDB();
   return db;
@@ -68,11 +67,13 @@ export async function prepararChat(mensaje, tipoUsuario = "free") {
   return { texto, tipoUsuario, esPrimerMensaje, ...conversacion };
 }
 
+// SSE
 export function sendSSE(res, event, payload) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+// TTS
 export function parseTtsBody(body) {
   if (!body || typeof body === "object") return body || {};
   if (typeof body !== "string") return {};

@@ -9,9 +9,11 @@ import {
 
 const router = Router();
 
-// POST /api/chat
 router.post("/chat", async (req, res) => {
   try {
+
+    console.log("Body recibido en /api/chat:", req.body);
+
     const { mensaje, tipoUsuario = "free" } = req.body || {};
     const chat = await prepararChat(mensaje, tipoUsuario);
 
@@ -45,7 +47,6 @@ router.post("/chat", async (req, res) => {
   }
 });
 
-// POST /api/chat/stream
 router.post("/chat/stream", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
