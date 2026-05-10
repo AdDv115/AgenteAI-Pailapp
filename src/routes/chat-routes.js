@@ -6,16 +6,39 @@ import {
   saveConversacion,
   sendSSE,
 } from "../utils/chat-helpers.js";
+import { GetoCreateConvId } from "../services/ConSer.js";
 
 const router = Router();
 
 router.post("/chat", async (req, res) => {
   try {
 
-    console.log("Body recibido en /api/chat:", req.body);
+    const { mensaje, idUsuario } = req.body || {};
 
-    const { mensaje, tipoUsuario = "free" } = req.body || {};
-    const chat = await prepararChat(mensaje, tipoUsuario);
+    if (!idUsuario){
+        return res.status(400).json({ error: "Falta idUsuario" });
+    }
+
+    // MYSQL: Obtener/Crear conversacion
+
+    let conversationId;
+    
+    try {
+        conversationId = await GetoCreateConvId(idUsuario);
+    
+    }catch{
+        if (err.message.includes("Limite de conversaciones")) {
+            return res.status(409).json({ error: err.message });
+        }
+
+        console.error("Error MYSQL conversacion: ", err);
+        return res
+            .status(500)
+            .json({ error: "Error al gestionar la conversacion"});
+    }
+
+    // Mongo: Preparar contexto para la conversacion
+    const chat = await prepararChat(mensaje, { conversationId, idUsuario, });
 
     if (chat.error) {
       return res.status(400).json({ error: chat.error });
@@ -31,16 +54,18 @@ router.post("/chat", async (req, res) => {
 
     const mensajesGuardados = await saveConversacion(
       chat.database,
-      chat.userId,
+      chat.meta, // { conversationId, idUsuario }
       chat.mensajes
     );
 
     res.json({
       respuesta,
-      tipoUsuario: chat.tipoUsuario,
+      conversationId,
+      idUsuario,
       esPrimerMensaje: chat.esPrimerMensaje,
       totalMensajes: mensajesGuardados.length,
     });
+    
   } catch (err) {
     console.error("Chat endpoint error:", err);
     res.status(500).json({ error: "Error interno del servidor" });

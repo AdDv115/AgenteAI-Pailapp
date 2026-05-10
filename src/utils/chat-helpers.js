@@ -20,28 +20,29 @@ export function addMensaje(mensajes, role, content) {
   mensajes.push({ role, content, timestamp: new Date() });
 }
 
-export async function getConversacion(tipoUsuario = "free") {
+// meta = { conversationId, idUsuario }
+export async function getConversacion(meta) {
+  const { conversationId, idUsuario } = meta;
   const database = await getDB();
-  const userId = String(tipoUsuario || "free");
-  const guardada = await database
-    .collection("conversaciones")
-    .findOne({ userId });
+
+  const guardada = await database.collection("conversaciones")
+  .findOne({ conversationId, idUsuario, });
 
   return {
     database,
-    userId,
+    meta, 
     mensajes: guardada?.mensajes || [],
   };
 }
 
-export async function saveConversacion(database, userId, mensajes) {
+export async function saveConversacion(database, meta, mensajes) {
   const mensajesGuardados = mensajes.slice(-20);
 
   await database.collection("conversaciones").updateOne(
-    { userId },
+    { conversationId: meta.conversationId, idUsuario: meta.idUsuario },
     {
       $set: {
-        userId,
+        ...meta,
         mensajes: mensajesGuardados,
         ultimaActualizacion: new Date(),
         totalMensajes: mensajesGuardados.length,
@@ -53,18 +54,22 @@ export async function saveConversacion(database, userId, mensajes) {
   return mensajesGuardados;
 }
 
-export async function prepararChat(mensaje, tipoUsuario = "free") {
+export async function prepararChat(mensaje, meta) {
   if (!esMensajeValido(mensaje)) {
     return { error: "Mensaje invalido (1-2000 caracteres)" };
   }
 
   const texto = mensaje.trim();
-  const conversacion = await getConversacion(tipoUsuario);
+  const conversacion = await getConversacion(meta);
   const esPrimerMensaje = conversacion.mensajes.length === 0;
 
   addMensaje(conversacion.mensajes, "user", texto);
 
-  return { texto, tipoUsuario, esPrimerMensaje, ...conversacion };
+  return { texto, 
+    tipoUsuario: "mysql-user", 
+    esPrimerMensaje, 
+    ...conversacion,
+  };
 }
 
 // SSE
