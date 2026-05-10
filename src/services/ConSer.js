@@ -1,4 +1,4 @@
-import { getMySQL } from "../db/mysql";
+import { getMySQL } from "../db/mysql.js";
 
 const MAX_CONVERSACIONESPORUSUARIO = 5;
 
