@@ -10,35 +10,35 @@ import { GetoCreateConvId } from "../services/ConSer.js";
 
 const router = Router();
 
+// POST /api/chat
 router.post("/chat", async (req, res) => {
   try {
-
     const { mensaje, idUsuario } = req.body || {};
 
-    if (!idUsuario){
-        return res.status(400).json({ error: "Falta idUsuario" });
+    if (!idUsuario) {
+      return res.status(400).json({ error: "Falta idUsuario" });
     }
 
-    // MYSQL: Obtener/Crear conversacion
-
+    // MYSQL: Obtener/crear conversación
     let conversationId;
-    
-    try {
-        conversationId = await GetoCreateConvId(idUsuario);
-    
-    }catch{
-        if (err.message.includes("Limite de conversaciones")) {
-            return res.status(409).json({ error: err.message });
-        }
 
-        console.error("Error MYSQL conversacion: ", err);
-        return res
-            .status(500)
-            .json({ error: "Error al gestionar la conversacion"});
+    try {
+      conversationId = await GetoCreateConvId(idUsuario);
+    } catch (err) {
+      if (err.message.includes("Límite de conversaciones")) {
+        return res.status(409).json({ error: err.message });
+      }
+
+      console.error("Error MYSQL conversacion: ", err);
+      return res
+        .status(500)
+        .json({ error: "Error al gestionar la conversacion" });
     }
 
-    // Mongo: Preparar contexto para la conversacion
-    const chat = await prepararChat(mensaje, { conversationId, idUsuario, });
+    const meta = { conversationId, idUsuario };
+
+    // Mongo: preparar contexto para la conversación
+    const chat = await prepararChat(mensaje, meta);
 
     if (chat.error) {
       return res.status(400).json({ error: chat.error });
@@ -46,10 +46,11 @@ router.post("/chat", async (req, res) => {
 
     const respuesta = await Agente(
       chat.texto,
-      chat.tipoUsuario,
+      "mysql-user",
       chat.mensajes,
       chat.esPrimerMensaje
     );
+
     addMensaje(chat.mensajes, "assistant", respuesta);
 
     const mensajesGuardados = await saveConversacion(
@@ -65,13 +66,13 @@ router.post("/chat", async (req, res) => {
       esPrimerMensaje: chat.esPrimerMensaje,
       totalMensajes: mensajesGuardados.length,
     });
-    
   } catch (err) {
     console.error("Chat endpoint error:", err);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
+// POST /api/chat/stream
 router.post("/chat/stream", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -80,8 +81,34 @@ router.post("/chat/stream", async (req, res) => {
   if (typeof res.flushHeaders === "function") res.flushHeaders();
 
   try {
-    const { mensaje, tipoUsuario = "free" } = req.body || {};
-    const chat = await prepararChat(mensaje, tipoUsuario);
+    const { mensaje, idUsuario } = req.body || {};
+
+    if (!idUsuario) {
+      sendSSE(res, "error", { error: "Falta idUsuario" });
+      return res.end();
+    }
+
+    // MYSQL: Obtener/crear conversación
+    let conversationId;
+
+    try {
+      conversationId = await GetoCreateConvId(idUsuario);
+    } catch (err) {
+      if (err.message.includes("Límite de conversaciones")) {
+        sendSSE(res, "error", { error: err.message });
+        return res.end();
+      }
+
+      console.error("Error MYSQL conversacion: ", err);
+      sendSSE(res, "error", {
+        error: "Error al gestionar la conversacion",
+      });
+      return res.end();
+    }
+
+    const meta = { conversationId, idUsuario };
+
+    const chat = await prepararChat(mensaje, meta);
 
     if (chat.error) {
       sendSSE(res, "error", { error: chat.error });
@@ -89,11 +116,14 @@ router.post("/chat/stream", async (req, res) => {
     }
 
     let respuesta = "";
-    sendSSE(res, "meta", { esPrimerMensaje: chat.esPrimerMensaje });
+    sendSSE(res, "meta", {
+      esPrimerMensaje: chat.esPrimerMensaje,
+      conversationId,
+    });
 
     for await (const delta of AgenteStream(
       chat.texto,
-      chat.tipoUsuario,
+      "mysql-user",
       chat.mensajes,
       chat.esPrimerMensaje
     )) {
@@ -107,15 +137,17 @@ router.post("/chat/stream", async (req, res) => {
     }
 
     addMensaje(chat.mensajes, "assistant", respuesta);
+
     const mensajesGuardados = await saveConversacion(
       chat.database,
-      chat.userId,
+      chat.meta,
       chat.mensajes
     );
 
     sendSSE(res, "done", {
       respuesta,
-      tipoUsuario: chat.tipoUsuario,
+      conversationId,
+      idUsuario,
       esPrimerMensaje: chat.esPrimerMensaje,
       totalMensajes: mensajesGuardados.length,
     });

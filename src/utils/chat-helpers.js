@@ -65,8 +65,8 @@ export async function prepararChat(mensaje, meta) {
 
   addMensaje(conversacion.mensajes, "user", texto);
 
-  return { texto, 
-    tipoUsuario: "mysql-user", 
+  return { 
+    texto, 
     esPrimerMensaje, 
     ...conversacion,
   };
