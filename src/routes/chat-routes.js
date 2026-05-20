@@ -6,26 +6,35 @@ import {
   saveConversacion,
   sendSSE,
 } from "../utils/chat-helpers.js";
-import { GetoCreateConvId } from "../services/ConSer.js";
+import { GetoCreateConvId, normalizarIdUsuario } from "../services/ConSer.js";
 
 const router = Router();
+
+const esLimiteConversaciones = (err) =>
+  err?.message?.toLowerCase().includes("conversaciones activas");
 
 // POST /api/chat
 router.post("/chat", async (req, res) => {
   try {
-    const { mensaje, idUsuario } = req.body || {};
+    const { mensaje, idUsuario, conversationId, nuevaConversacion } = req.body || {};
 
     if (!idUsuario) {
       return res.status(400).json({ error: "Falta idUsuario" });
     }
 
     // MYSQL: Obtener/crear conversación
-    let conversationId;
+    let idUsuarioNormalizado;
+    let conversationIdFinal;
 
     try {
-      conversationId = await GetoCreateConvId(idUsuario);
+      idUsuarioNormalizado = normalizarIdUsuario(idUsuario);
+      conversationIdFinal = await GetoCreateConvId(
+        idUsuarioNormalizado,
+        conversationId,
+        { crearNueva: Boolean(nuevaConversacion) },
+      );
     } catch (err) {
-      if (err.message.includes("Límite de conversaciones")) {
+      if (esLimiteConversaciones(err)) {
         return res.status(409).json({ error: err.message });
       }
 
@@ -35,7 +44,7 @@ router.post("/chat", async (req, res) => {
         .json({ error: "Error al gestionar la conversacion" });
     }
 
-    const meta = { conversationId, idUsuario };
+    const meta = { conversationId: conversationIdFinal, idUsuario: idUsuarioNormalizado };
 
     // Mongo: preparar contexto para la conversación
     const chat = await prepararChat(mensaje, meta);
@@ -61,8 +70,8 @@ router.post("/chat", async (req, res) => {
 
     res.json({
       respuesta,
-      conversationId,
-      idUsuario,
+      conversationId: conversationIdFinal,
+      idUsuario: idUsuarioNormalizado,
       esPrimerMensaje: chat.esPrimerMensaje,
       totalMensajes: mensajesGuardados.length,
     });
@@ -81,7 +90,7 @@ router.post("/chat/stream", async (req, res) => {
   if (typeof res.flushHeaders === "function") res.flushHeaders();
 
   try {
-    const { mensaje, idUsuario } = req.body || {};
+    const { mensaje, idUsuario, conversationId, nuevaConversacion } = req.body || {};
 
     if (!idUsuario) {
       sendSSE(res, "error", { error: "Falta idUsuario" });
@@ -89,12 +98,18 @@ router.post("/chat/stream", async (req, res) => {
     }
 
     // MYSQL: Obtener/crear conversación
-    let conversationId;
+    let idUsuarioNormalizado;
+    let conversationIdFinal;
 
     try {
-      conversationId = await GetoCreateConvId(idUsuario);
+      idUsuarioNormalizado = normalizarIdUsuario(idUsuario);
+      conversationIdFinal = await GetoCreateConvId(
+        idUsuarioNormalizado,
+        conversationId,
+        { crearNueva: Boolean(nuevaConversacion) },
+      );
     } catch (err) {
-      if (err.message.includes("Límite de conversaciones")) {
+      if (esLimiteConversaciones(err)) {
         sendSSE(res, "error", { error: err.message });
         return res.end();
       }
@@ -106,7 +121,7 @@ router.post("/chat/stream", async (req, res) => {
       return res.end();
     }
 
-    const meta = { conversationId, idUsuario };
+    const meta = { conversationId: conversationIdFinal, idUsuario: idUsuarioNormalizado };
 
     const chat = await prepararChat(mensaje, meta);
 
@@ -118,7 +133,8 @@ router.post("/chat/stream", async (req, res) => {
     let respuesta = "";
     sendSSE(res, "meta", {
       esPrimerMensaje: chat.esPrimerMensaje,
-      conversationId,
+      conversationId: conversationIdFinal,
+      idUsuario: idUsuarioNormalizado,
     });
 
     for await (const delta of AgenteStream(
@@ -146,8 +162,8 @@ router.post("/chat/stream", async (req, res) => {
 
     sendSSE(res, "done", {
       respuesta,
-      conversationId,
-      idUsuario,
+      conversationId: conversationIdFinal,
+      idUsuario: idUsuarioNormalizado,
       esPrimerMensaje: chat.esPrimerMensaje,
       totalMensajes: mensajesGuardados.length,
     });

@@ -20,29 +20,58 @@ export function addMensaje(mensajes, role, content) {
   mensajes.push({ role, content, timestamp: new Date() });
 }
 
+function normalizarIdNumerico(valor) {
+  const numero = Number(valor);
+  return Number.isInteger(numero) && numero > 0 ? numero : valor;
+}
+
+function variantesId(valor) {
+  const normalizado = normalizarIdNumerico(valor);
+  const variantes = [normalizado, String(normalizado)];
+  return [...new Set(variantes)];
+}
+
+function normalizarMeta(meta) {
+  return {
+    conversationId: normalizarIdNumerico(meta.conversationId),
+    idUsuario: normalizarIdNumerico(meta.idUsuario),
+  };
+}
+
 // meta = { conversationId, idUsuario }
 export async function getConversacion(meta) {
-  const { conversationId, idUsuario } = meta;
+  const metaNormalizada = normalizarMeta(meta);
+  const { conversationId, idUsuario } = metaNormalizada;
   const database = await getDB();
 
   const guardada = await database.collection("conversaciones")
-  .findOne({ conversationId, idUsuario, });
+  .findOne({
+    conversationId: { $in: variantesId(conversationId) },
+    idUsuario: { $in: variantesId(idUsuario) },
+  });
 
   return {
     database,
-    meta, 
+    meta: metaNormalizada,
     mensajes: guardada?.mensajes || [],
   };
 }
 
 export async function saveConversacion(database, meta, mensajes) {
-  const mensajesGuardados = mensajes.slice(-20);
+  const metaNormalizada = normalizarMeta(meta);
+  const mensajesGuardados = mensajes;
 
   await database.collection("conversaciones").updateOne(
-    { conversationId: meta.conversationId, idUsuario: meta.idUsuario },
     {
+      conversationId: { $in: variantesId(metaNormalizada.conversationId) },
+      idUsuario: { $in: variantesId(metaNormalizada.idUsuario) },
+    },
+    {
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
       $set: {
-        ...meta,
+        ...metaNormalizada,
         mensajes: mensajesGuardados,
         ultimaActualizacion: new Date(),
         totalMensajes: mensajesGuardados.length,

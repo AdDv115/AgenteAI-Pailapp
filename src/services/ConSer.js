@@ -1,29 +1,77 @@
 import { getMySQL } from "../db/mysql.js";
 
-const MAX_CONVERSACIONESPORUSUARIO = 5;
+const MAX_CONVERSACIONES_POR_USUARIO = 5;
 
-export async function GetoCreateConvId(idUsuario) {
-    const pool = await getMySQL();
-    const conn = await pool.getConnection();
+const normalizarId = (valor, nombreCampo) => {
+  const numero = Number(valor);
 
-    try {
-        //Se obtiene conversaciones activas del usuario
-        const [rows] = await conn.query(
-            "SELECT id_conversacion FROM conversacion WHERE id_usuario = ? AND estado = 'activa' ORDER BY created_at ASC", [idUsuario]
-        );
+  if (!Number.isInteger(numero) || numero <= 0) {
+    throw new Error(`${nombreCampo} invalido`);
+  }
 
-        const conversaciones = rows;
+  return numero;
+};
 
-        if (conversaciones.length >= MAX_CONVERSACIONESPORUSUARIO) {
+export function normalizarIdUsuario(idUsuario) {
+  return normalizarId(idUsuario, "idUsuario");
+}
 
-            throw new error(`El usuario ha alcanzado el límite de ${MAX_CONVERSACIONESPORUSUARIO} conversaciones activas.`);
+export function normalizarConversationId(conversationId) {
+  if (conversationId === undefined || conversationId === null || conversationId === "") {
+    return null;
+  }
+
+  return normalizarId(conversationId, "conversationId");
+}
+
+export async function GetoCreateConvId(
+  idUsuario,
+  conversationId = null,
+  { crearNueva = false } = {},
+) {
+  const idUsuarioNormalizado = normalizarIdUsuario(idUsuario);
+  const conversationIdNormalizado = normalizarConversationId(conversationId);
+  const pool = await getMySQL();
+  const conn = await pool.getConnection();
+
+  try {
+    if (conversationIdNormalizado) {
+      const [rows] = await conn.query(
+        "SELECT id_conversacion FROM conversacion WHERE id_conversacion = ? AND id_usuario = ? AND estado = 'activa' LIMIT 1",
+        [conversationIdNormalizado, idUsuarioNormalizado],
+      );
+
+      if (!rows.length) {
+        throw new Error("Conversacion no encontrada o inactiva.");
+      }
+
+      return conversationIdNormalizado;
     }
-    
-    const [result] = await conn.query("INSERT INTO conversacion (id_usuario) VALUES (?)", [idUsuario]);
+
+    const [rows] = await conn.query(
+      "SELECT id_conversacion FROM conversacion WHERE id_usuario = ? AND estado = 'activa' ORDER BY created_at DESC",
+      [idUsuarioNormalizado],
+    );
+
+    const conversaciones = rows;
+
+    if (!crearNueva && conversaciones.length > 0) {
+      return conversaciones[0].id_conversacion;
+    }
+
+    if (conversaciones.length >= MAX_CONVERSACIONES_POR_USUARIO) {
+      throw new Error(
+        `El usuario ha alcanzado el limite de ${MAX_CONVERSACIONES_POR_USUARIO} conversaciones activas.`,
+      );
+    }
+
+    const [result] = await conn.query(
+      "INSERT INTO conversacion (id_usuario) VALUES (?)",
+      [idUsuarioNormalizado],
+    );
 
     return result.insertId;
-
-    } finally {
-        conn.release();
-    }
+  } finally {
+    conn.release();
+  }
 }
