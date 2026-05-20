@@ -6,7 +6,7 @@ const apiKey = process.env.GEMINI_API_KEY;
 
 // Si no existe la API key se falla al iniciar para detectar el problema pronto.
 if (!apiKey) {
-    throw new Error("Falta GEMINI_API_KEY");
+    throw new Error("Falta GEMINI_API_KEY2");
 }
 
 // Instancia única reutilizable en los módulos que consultan Gemini.
