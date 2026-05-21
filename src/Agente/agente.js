@@ -18,6 +18,31 @@ const RESPUESTA_MARKER = "RESPUESTA:";
 const MAX_RETRIES_PER_MODEL = 2;
 const RETRY_BASE_MS = 350;
 
+function formatearNumeroPerfil(valor) {
+  const numero = Number(valor);
+  if (!Number.isFinite(numero) || numero <= 0) return null;
+  return Number.isInteger(numero) ? String(numero) : numero.toFixed(1);
+}
+
+function buildPerfilUsuario(perfilUsuario) {
+  const edad = formatearNumeroPerfil(perfilUsuario?.edad);
+  const alturaCm = formatearNumeroPerfil(perfilUsuario?.alturaCm);
+  const pesoKg = formatearNumeroPerfil(perfilUsuario?.pesoKg);
+
+  const lineas = [
+    edad ? `Edad: ${edad} anios` : null,
+    alturaCm ? `Altura: ${alturaCm} cm` : null,
+    pesoKg ? `Peso: ${pesoKg} kg` : null,
+  ].filter(Boolean);
+
+  if (!lineas.length) {
+    return "No disponible. Si el usuario pide una recomendacion personalizada, solicita edad, estatura y peso de forma breve.";
+  }
+
+  return `${lineas.join("\n")}
+Usa estos datos solo para ajustar porciones y recomendaciones generales. No hagas diagnosticos medicos.`;
+}
+
 // Construye el prompt final combinando personalidad, reglas, historial y
 // el mensaje actual del usuario.
 function buildPrompt(
@@ -25,6 +50,7 @@ function buildPrompt(
   tipoUsuario = "free",
   historial = [],
   esPrimeraCharla = false,
+  perfilUsuario = null,
 ) {
   const historialTexto = historial.slice(-8).map(msg => 
     `[${msg.role.toUpperCase()}] ${msg.content}`
@@ -35,6 +61,8 @@ function buildPrompt(
     ? "PRIMERA CHARLA: incluye saludo rolo" 
     : "CONTINÚA: directo sin saludo";
 
+  const perfilTexto = buildPerfilUsuario(perfilUsuario);
+
   // tipoUsuario queda disponible para futuras variantes del prompt.
   const prompt = `
 [SISTEMA] ${pSistema}
@@ -42,6 +70,9 @@ function buildPrompt(
 [RULES] ${pRules}
 
 [CONTEXTO] ${contexto}
+
+[PERFIL_USUARIO]
+${perfilTexto}
 
 [HISTORIAL] ${historialTexto || "Charla nueva"}
 
@@ -169,12 +200,14 @@ export async function Agente(
   tipoUsuario = "free",
   historial = [],
   esPrimeraCharla = false,
+  perfilUsuario = null,
 ) {
   const prompt = buildPrompt(
     mensajeUser,
     tipoUsuario,
     historial,
     esPrimeraCharla,
+    perfilUsuario,
   );
 
   const { response: respuesta } = await generateWithFallback(prompt);
@@ -200,12 +233,14 @@ export async function* AgenteStream(
   tipoUsuario = "free",
   historial = [],
   esPrimeraCharla = false,
+  perfilUsuario = null,
 ) {
   const prompt = buildPrompt(
     mensajeUser,
     tipoUsuario,
     historial,
     esPrimeraCharla,
+    perfilUsuario,
   );
   const { stream } = await generateStreamWithFallback(prompt);
 

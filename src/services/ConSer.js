@@ -1,6 +1,7 @@
 import { getMySQL } from "../db/mysql.js";
 
 const MAX_CONVERSACIONES_POR_USUARIO = 5;
+const SQL_IDENTIFIER_REGEX = /^[a-zA-Z0-9_]+$/;
 
 const normalizarId = (valor, nombreCampo) => {
   const numero = Number(valor);
@@ -14,6 +15,69 @@ const normalizarId = (valor, nombreCampo) => {
 
 export function normalizarIdUsuario(idUsuario) {
   return normalizarId(idUsuario, "idUsuario");
+}
+
+function sqlIdentifier(nombre, fallback) {
+  const valor = String(nombre || fallback || "").trim();
+
+  if (!SQL_IDENTIFIER_REGEX.test(valor)) {
+    throw new Error(`Identificador SQL invalido: ${valor}`);
+  }
+
+  return `\`${valor}\``;
+}
+
+function normalizarNumeroPerfil(valor) {
+  const numero = Number(valor);
+  return Number.isFinite(numero) && numero > 0 ? numero : null;
+}
+
+function normalizarPerfilUsuario(row) {
+  if (!row) return null;
+
+  const perfil = {
+    edad: normalizarNumeroPerfil(row.edad),
+    alturaCm: normalizarNumeroPerfil(row.alturaCm),
+    pesoKg: normalizarNumeroPerfil(row.pesoKg),
+  };
+
+  return Object.values(perfil).some((valor) => valor !== null) ? perfil : null;
+}
+
+export async function getPerfilUsuario(idUsuario) {
+  const idUsuarioNormalizado = normalizarIdUsuario(idUsuario);
+  const pool = await getMySQL();
+
+  const tablaUsuario = sqlIdentifier(
+    process.env.MYSQL_USUARIO_TABLE,
+    "usuario",
+  );
+  const columnaId = sqlIdentifier(
+    process.env.MYSQL_USUARIO_ID_COLUMN,
+    "id_usuario",
+  );
+  const columnaEdad = sqlIdentifier(
+    process.env.MYSQL_USUARIO_EDAD_COLUMN,
+    "edad",
+  );
+  const columnaAltura = sqlIdentifier(
+    process.env.MYSQL_USUARIO_ALTURA_COLUMN,
+    "altura",
+  );
+  const columnaPeso = sqlIdentifier(
+    process.env.MYSQL_USUARIO_PESO_COLUMN,
+    "peso",
+  );
+
+  const [rows] = await pool.query(
+    `SELECT ${columnaEdad} AS edad, ${columnaAltura} AS alturaCm, ${columnaPeso} AS pesoKg
+     FROM ${tablaUsuario}
+     WHERE ${columnaId} = ?
+     LIMIT 1`,
+    [idUsuarioNormalizado],
+  );
+
+  return normalizarPerfilUsuario(rows[0]);
 }
 
 export function normalizarConversationId(conversationId) {

@@ -6,12 +6,25 @@ import {
   saveConversacion,
   sendSSE,
 } from "../utils/chat-helpers.js";
-import { GetoCreateConvId, normalizarIdUsuario } from "../services/ConSer.js";
+import {
+  GetoCreateConvId,
+  getPerfilUsuario,
+  normalizarIdUsuario,
+} from "../services/ConSer.js";
 
 const router = Router();
 
 const esLimiteConversaciones = (err) =>
   err?.message?.toLowerCase().includes("conversaciones activas");
+
+async function getPerfilUsuarioSeguro(idUsuario) {
+  try {
+    return await getPerfilUsuario(idUsuario);
+  } catch (err) {
+    console.warn("No se pudo cargar el perfil del usuario desde MySQL:", err.message);
+    return null;
+  }
+}
 
 // POST /api/chat
 router.post("/chat", async (req, res) => {
@@ -45,6 +58,7 @@ router.post("/chat", async (req, res) => {
     }
 
     const meta = { conversationId: conversationIdFinal, idUsuario: idUsuarioNormalizado };
+    const perfilUsuario = await getPerfilUsuarioSeguro(idUsuarioNormalizado);
 
     // Mongo: preparar contexto para la conversación
     const chat = await prepararChat(mensaje, meta);
@@ -57,7 +71,8 @@ router.post("/chat", async (req, res) => {
       chat.texto,
       "mysql-user",
       chat.mensajes,
-      chat.esPrimerMensaje
+      chat.esPrimerMensaje,
+      perfilUsuario
     );
 
     addMensaje(chat.mensajes, "assistant", respuesta);
@@ -122,6 +137,7 @@ router.post("/chat/stream", async (req, res) => {
     }
 
     const meta = { conversationId: conversationIdFinal, idUsuario: idUsuarioNormalizado };
+    const perfilUsuario = await getPerfilUsuarioSeguro(idUsuarioNormalizado);
 
     const chat = await prepararChat(mensaje, meta);
 
@@ -141,7 +157,8 @@ router.post("/chat/stream", async (req, res) => {
       chat.texto,
       "mysql-user",
       chat.mensajes,
-      chat.esPrimerMensaje
+      chat.esPrimerMensaje,
+      perfilUsuario
     )) {
       if (!delta) continue;
       respuesta += delta;
