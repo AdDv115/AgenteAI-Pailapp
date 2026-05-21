@@ -10,7 +10,7 @@ const app = express();
 
 // Cliente ElevenLabs 
 const elevenlabs = new ElevenLabsClient({
-  apiKey: process.env.ELEVENLABS_API_KEY,
+  apiKey: process.env.ELEVENLABS_API_KEY2,
 });
 
 // middlewares globales
