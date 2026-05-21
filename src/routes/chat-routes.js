@@ -1,11 +1,14 @@
 import { Router } from "express";
 import { Agente, AgenteStream } from "../Agente/agente.js";
+import { AgenteGroq, AgenteGroqStream } from "../Agente/agenteGroq.js";
+import { AgenteOR, AgenteORStream } from "../Agente/agenteOpenRouter.js";
 import {
   prepararChat,
   addMensaje,
   saveConversacion,
   sendSSE,
 } from "../utils/chat-helpers.js";
+import { necesitaBusqueda, webSearch } from "../services/webSearchService.js";
 import {
   GetoCreateConvId,
   getPerfilUsuario,
@@ -24,6 +27,104 @@ async function getPerfilUsuarioSeguro(idUsuario) {
     console.warn("No se pudo cargar el perfil del usuario desde MySQL:", err.message);
     return null;
   }
+}
+
+function insertarContextoWeb(mensajes, contextoWeb) {
+  if (!contextoWeb) return mensajes;
+
+  const mensajeActual = mensajes[mensajes.length - 1];
+  const historialPrevio = mensajes.slice(0, -1);
+
+  return [
+    ...historialPrevio,
+    { role: "system", content: `[CONTEXTO WEB]\n${contextoWeb}` },
+    mensajeActual,
+  ].filter(Boolean);
+}
+
+async function cargarHistorialConContextoWeb(mensaje, mensajes) {
+  if (!necesitaBusqueda(mensaje)) return mensajes;
+
+  try {
+    const contextoWeb = await webSearch(mensaje);
+    return insertarContextoWeb(mensajes, contextoWeb);
+  } catch (err) {
+    console.warn("Busqueda web fallida, se continua sin contexto web:", err.message);
+    return mensajes;
+  }
+}
+
+const PROVEEDORES_RESPUESTA = [
+  { nombre: "Groq", responder: AgenteGroq },
+  { nombre: "OpenRouter", responder: AgenteOR },
+  { nombre: "Gemini", responder: Agente },
+];
+
+const PROVEEDORES_STREAM = [
+  { nombre: "Groq", responder: AgenteGroqStream },
+  { nombre: "OpenRouter", responder: AgenteORStream },
+  { nombre: "Gemini", responder: AgenteStream },
+];
+
+async function responderConFallback({
+  mensaje,
+  tipoUsuario,
+  historial,
+  esPrimeraCharla,
+  perfilUsuario,
+}) {
+  let lastError = null;
+
+  for (const proveedor of PROVEEDORES_RESPUESTA) {
+    try {
+      return await proveedor.responder(
+        mensaje,
+        tipoUsuario,
+        historial,
+        esPrimeraCharla,
+        perfilUsuario,
+      );
+    } catch (err) {
+      lastError = err;
+      console.warn(`[${proveedor.nombre} fallido]`, err.message);
+    }
+  }
+
+  throw lastError || new Error("No hay proveedores disponibles");
+}
+
+async function iniciarStreamConFallback({
+  mensaje,
+  tipoUsuario,
+  historial,
+  esPrimeraCharla,
+  perfilUsuario,
+}) {
+  let lastError = null;
+
+  for (const proveedor of PROVEEDORES_STREAM) {
+    try {
+      const iterator = proveedor.responder(
+        mensaje,
+        tipoUsuario,
+        historial,
+        esPrimeraCharla,
+        perfilUsuario,
+      )[Symbol.asyncIterator]();
+      const first = await iterator.next();
+
+      if (first.done) {
+        throw new Error(`${proveedor.nombre} no emitio contenido`);
+      }
+
+      return { proveedor: proveedor.nombre, iterator, first };
+    } catch (err) {
+      lastError = err;
+      console.warn(`[${proveedor.nombre} stream fallido]`, err.message);
+    }
+  }
+
+  throw lastError || new Error("No hay proveedores stream disponibles");
 }
 
 // POST /api/chat
@@ -67,13 +168,17 @@ router.post("/chat", async (req, res) => {
       return res.status(400).json({ error: chat.error });
     }
 
-    const respuesta = await Agente(
+    const historialConContexto = await cargarHistorialConContextoWeb(
       chat.texto,
-      "mysql-user",
       chat.mensajes,
-      chat.esPrimerMensaje,
-      perfilUsuario
     );
+    const respuesta = await responderConFallback({
+      mensaje: chat.texto,
+      tipoUsuario: "mysql-user",
+      historial: historialConContexto,
+      esPrimeraCharla: chat.esPrimerMensaje,
+      perfilUsuario,
+    });
 
     addMensaje(chat.mensajes, "assistant", respuesta);
 
@@ -153,13 +258,25 @@ router.post("/chat/stream", async (req, res) => {
       idUsuario: idUsuarioNormalizado,
     });
 
-    for await (const delta of AgenteStream(
+    const historialConContexto = await cargarHistorialConContextoWeb(
       chat.texto,
-      "mysql-user",
       chat.mensajes,
-      chat.esPrimerMensaje,
-      perfilUsuario
-    )) {
+    );
+    const streamFallback = await iniciarStreamConFallback({
+      mensaje: chat.texto,
+      tipoUsuario: "mysql-user",
+      historial: historialConContexto,
+      esPrimeraCharla: chat.esPrimerMensaje,
+      perfilUsuario,
+    });
+
+    const firstDelta = streamFallback.first.value;
+    if (firstDelta) {
+      respuesta += firstDelta;
+      sendSSE(res, "chunk", { delta: firstDelta });
+    }
+
+    for await (const delta of streamFallback.iterator) {
       if (!delta) continue;
       respuesta += delta;
       sendSSE(res, "chunk", { delta });

@@ -39,9 +39,15 @@ Backend en Node.js para un agente conversacional enfocado en cocina saludable pa
 
 ## Variables de entorno
 
-- `GEMINI_API_KEY`: clave de Google Gemini.
-- `GEMINI_MODEL`: modelo preferido; si falla, se prueban modelos alternos.
-- `MONGODB_URI`: conexión a la base de datos.
+- `GROQ_API_KEY`: clave de Groq, proveedor principal.
+- `GROQ_MODEL`: modelo principal de Groq. Por defecto `llama-3.3-70b-versatile`.
+- `GROQ_SEARCH_MODEL`: modelo Groq Compound para busqueda web. Por defecto `groq/compound-mini`.
+- `OPENROUTER_API_KEY`: clave de OpenRouter para fallback intermedio.
+- `OPENROUTER_MODEL`: modelo de OpenRouter. Por defecto `openrouter/auto`.
+- `GEMINI_API_KEY2`: clave de Google Gemini para fallback final.
+- `GEMINI_MODEL`: modelo preferido de Gemini; si falla, se prueban modelos alternos.
+- `MONGODB_URI`: conexion a la base de datos.
+- `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASS`, `MYSQL_DB`: conexion MySQL.
 - `ELEVENLABS_API_KEY`: clave para texto a voz y tokens.
 
 ## Ejecutar localmente
