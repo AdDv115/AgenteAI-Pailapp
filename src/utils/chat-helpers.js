@@ -68,8 +68,8 @@ export async function saveConversacion(database, meta, mensajes) {
 
   await database.collection("conversaciones").updateOne(
     {
-      conversationId: metaNormalizada.conversationId, 
-      idUsuario: metaNormalizada.idUsuario,          
+      conversationId: metaNormalizada.conversationId,
+      idUsuario: metaNormalizada.idUsuario,
     },
     {
       $setOnInsert: {
@@ -88,6 +88,25 @@ export async function saveConversacion(database, meta, mensajes) {
   return mensajesGuardados;
 }
 
+export async function eliminarHistorialMongo(conversationId, idUsuario) {
+  try {
+    const database = await getDB();
+    const variantesConvId = variantesId(normalizarIdNumerico(conversationId));
+    const variantesUserId = variantesId(normalizarIdNumerico(idUsuario));
+
+    await database.collection("conversaciones").deleteOne({
+      $and: [
+        { conversationId: { $in: variantesConvId } },
+        { idUsuario: { $in: variantesUserId } },
+      ],
+    });
+
+    console.info(`[Mongo] Historial eliminado para conversacion ${conversationId} del usuario ${idUsuario}`);
+  } catch (err) {
+    console.warn(`[Mongo] No se pudo eliminar historial de conversacion ${conversationId}:`, err.message);
+  }
+}
+
 export async function prepararChat(mensaje, meta) {
   if (!esMensajeValido(mensaje)) {
     return { error: "Mensaje invalido (1-2000 caracteres)" };
@@ -99,9 +118,9 @@ export async function prepararChat(mensaje, meta) {
 
   addMensaje(conversacion.mensajes, "user", texto);
 
-  return { 
-    texto, 
-    esPrimerMensaje, 
+  return {
+    texto,
+    esPrimerMensaje,
     ...conversacion,
   };
 }

@@ -1,4 +1,5 @@
 import { getMySQL } from "../db/mysql.js";
+import { eliminarHistorialMongo } from "../utils/chat-helpers.js";
 
 const MAX_CONVERSACIONES_POR_USUARIO = 5;
 const SQL_IDENTIFIER_REGEX = /^[a-zA-Z0-9_]+$/;
@@ -103,7 +104,10 @@ async function eliminarConversacionMasAntigua(conn, idUsuario) {
     [idAntigua],
   );
 
-  console.info(`[ConSer] Conversacion ${idAntigua} marcada como eliminada (limite alcanzado para usuario ${idUsuario})`);
+  // Limpiar también el historial en MongoDB
+  await eliminarHistorialMongo(idAntigua, idUsuario);
+
+  console.info(`[ConSer] Conversacion ${idAntigua} eliminada automaticamente (limite alcanzado para usuario ${idUsuario})`);
 }
 
 export async function GetoCreateConvId(
