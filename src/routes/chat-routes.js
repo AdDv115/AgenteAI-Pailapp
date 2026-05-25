@@ -17,9 +17,6 @@ import {
 
 const router = Router();
 
-const esLimiteConversaciones = (err) =>
-  err?.message?.toLowerCase().includes("conversaciones activas");
-
 async function getPerfilUsuarioSeguro(idUsuario) {
   try {
     return await getPerfilUsuario(idUsuario);
@@ -136,7 +133,6 @@ router.post("/chat", async (req, res) => {
       return res.status(400).json({ error: "Falta idUsuario" });
     }
 
-    // MYSQL: Obtener/crear conversación
     let idUsuarioNormalizado;
     let conversationIdFinal;
 
@@ -148,20 +144,13 @@ router.post("/chat", async (req, res) => {
         { crearNueva: Boolean(nuevaConversacion) },
       );
     } catch (err) {
-      if (esLimiteConversaciones(err)) {
-        return res.status(409).json({ error: err.message });
-      }
-
       console.error("Error MYSQL conversacion: ", err);
-      return res
-        .status(500)
-        .json({ error: "Error al gestionar la conversacion" });
+      return res.status(500).json({ error: "Error al gestionar la conversacion" });
     }
 
     const meta = { conversationId: conversationIdFinal, idUsuario: idUsuarioNormalizado };
     const perfilUsuario = await getPerfilUsuarioSeguro(idUsuarioNormalizado);
 
-    // Mongo: preparar contexto para la conversación
     const chat = await prepararChat(mensaje, meta);
 
     if (chat.error) {
@@ -184,7 +173,7 @@ router.post("/chat", async (req, res) => {
 
     const mensajesGuardados = await saveConversacion(
       chat.database,
-      chat.meta, // { conversationId, idUsuario }
+      chat.meta,
       chat.mensajes
     );
 
@@ -217,7 +206,6 @@ router.post("/chat/stream", async (req, res) => {
       return res.end();
     }
 
-    // MYSQL: Obtener/crear conversación
     let idUsuarioNormalizado;
     let conversationIdFinal;
 
@@ -229,15 +217,8 @@ router.post("/chat/stream", async (req, res) => {
         { crearNueva: Boolean(nuevaConversacion) },
       );
     } catch (err) {
-      if (esLimiteConversaciones(err)) {
-        sendSSE(res, "error", { error: err.message });
-        return res.end();
-      }
-
       console.error("Error MYSQL conversacion: ", err);
-      sendSSE(res, "error", {
-        error: "Error al gestionar la conversacion",
-      });
+      sendSSE(res, "error", { error: "Error al gestionar la conversacion" });
       return res.end();
     }
 
