@@ -44,10 +44,15 @@ export async function getConversacion(meta) {
   const { conversationId, idUsuario } = metaNormalizada;
   const database = await getDB();
 
+  const variantesConvId = variantesId(conversationId);
+  const variantesUserId = variantesId(idUsuario);
+
   const guardada = await database.collection("conversaciones")
   .findOne({
-    conversationId: { $in: variantesId(conversationId) },
-    idUsuario: { $in: variantesId(idUsuario) },
+    $and: [
+      { conversationId: { $in: variantesConvId } },
+      { idUsuario: { $in: variantesUserId } },
+    ]
   });
 
   return {
@@ -63,8 +68,8 @@ export async function saveConversacion(database, meta, mensajes) {
 
   await database.collection("conversaciones").updateOne(
     {
-      conversationId: { $in: variantesId(metaNormalizada.conversationId) },
-      idUsuario: { $in: variantesId(metaNormalizada.idUsuario) },
+      conversationId: metaNormalizada.conversationId, 
+      idUsuario: metaNormalizada.idUsuario,          
     },
     {
       $setOnInsert: {
