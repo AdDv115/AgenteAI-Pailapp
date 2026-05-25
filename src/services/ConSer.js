@@ -88,6 +88,24 @@ export function normalizarConversationId(conversationId) {
   return normalizarId(conversationId, "conversationId");
 }
 
+async function eliminarConversacionMasAntigua(conn, idUsuario) {
+  const [rows] = await conn.query(
+    "SELECT id_conversacion FROM conversacion WHERE id_usuario = ? AND estado = 'activa' ORDER BY created_at ASC LIMIT 1",
+    [idUsuario],
+  );
+
+  if (!rows.length) return;
+
+  const idAntigua = rows[0].id_conversacion;
+
+  await conn.query(
+    "UPDATE conversacion SET estado = 'eliminada' WHERE id_conversacion = ?",
+    [idAntigua],
+  );
+
+  console.info(`[ConSer] Conversacion ${idAntigua} marcada como eliminada (limite alcanzado para usuario ${idUsuario})`);
+}
+
 export async function GetoCreateConvId(
   idUsuario,
   conversationId = null,
@@ -123,10 +141,9 @@ export async function GetoCreateConvId(
       return conversaciones[0].id_conversacion;
     }
 
+    // Si se alcanza el limite, eliminar la conversacion mas antigua automaticamente
     if (conversaciones.length >= MAX_CONVERSACIONES_POR_USUARIO) {
-      throw new Error(
-        `El usuario ha alcanzado el limite de ${MAX_CONVERSACIONES_POR_USUARIO} conversaciones activas.`,
-      );
+      await eliminarConversacionMasAntigua(conn, idUsuarioNormalizado);
     }
 
     const [result] = await conn.query(
