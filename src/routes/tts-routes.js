@@ -5,37 +5,52 @@ import { parseTtsBody } from "../utils/chat-helpers.js";
 
 const router = Router();
 
-// Maximo de caracteres que se envian a ElevenLabs en una sola llamada.
-// eleven_turbo_v2_5 corta el audio si recibe textos muy largos; 900 chars
-// equivalen a ~2-3 parrafos cortos y siempre se completan sin corte.
+// Límite de caracteres por llamada a ElevenLabs
 const TTS_MAX_CHARS = 900;
 
+// Modelo y formato de audio: turbo para menor latencia, mp3 a menor bitrate para ahorrar cuota
+const TTS_MODEL_ID = "eleven_turbo_v2_5";
+const TTS_OUTPUT_FORMAT = "mp3_22050_32";
+
+// Caracteres que no aportan al audio (markdown, emojis de bloque, URLs)
+const MARKDOWN_REGEX = /```[\s\S]*?```|`[^`]+`|\*\*|__|\*|_|#{1,6}\s|\[([^\]]+)\]\([^)]+\)|https?:\/\/\S+/g;
+const EMOJI_BLOCK_REGEX = /[\u{1F300}-\u{1FFFF}]/gu;
+
 /**
- * Devuelve los primeros N caracteres del texto cortando en el ultimo
- * punto/signo de exclamacion/interrogacion antes del limite, para que
- * el audio nunca termine a la mitad de una palabra.
+ * Limpia el texto antes de enviarlo a TTS:
+ * - Elimina markdown, URLs y emojis que no se pronuncian bien
+ * - Colapsa espacios y saltos de línea múltiples
+ */
+function limpiarParaTts(text) {
+  return text
+    .replace(MARKDOWN_REGEX, (_, linkText) => linkText || "")
+    .replace(EMOJI_BLOCK_REGEX, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * Trunca en el último signo de puntuación antes del límite
+ * para que el audio no quede cortado a la mitad de una frase.
  */
 function truncarParaTts(text, maxChars = TTS_MAX_CHARS) {
   if (text.length <= maxChars) return text;
 
   const fragmento = text.slice(0, maxChars);
-  // Buscar el ultimo caracter de fin de oracion antes del limite
   const ultimoPunto = Math.max(
-    fragmento.lastIndexOf('. '),
-    fragmento.lastIndexOf('! '),
-    fragmento.lastIndexOf('? '),
-    fragmento.lastIndexOf('.\n'),
-    fragmento.lastIndexOf('!\n'),
-    fragmento.lastIndexOf('?\n'),
+    fragmento.lastIndexOf(". "),
+    fragmento.lastIndexOf("! "),
+    fragmento.lastIndexOf("? "),
+    fragmento.lastIndexOf(".\n"),
+    fragmento.lastIndexOf("!\n"),
+    fragmento.lastIndexOf("?\n"),
   );
 
-  if (ultimoPunto > 100) {
-    // +1 para incluir el punto/signo
-    return fragmento.slice(0, ultimoPunto + 1).trim();
-  }
+  if (ultimoPunto > 100) return fragmento.slice(0, ultimoPunto + 1).trim();
 
-  // Si no hay oracion completa (texto muy denso), cortar en el ultimo espacio
-  const ultimoEspacio = fragmento.lastIndexOf(' ');
+  const ultimoEspacio = fragmento.lastIndexOf(" ");
   return (ultimoEspacio > 50 ? fragmento.slice(0, ultimoEspacio) : fragmento).trim();
 }
 
@@ -87,8 +102,8 @@ async function convertTextToAudio(apiKey, voiceId, text) {
   const client = new ElevenLabsClient({ apiKey });
   const audioStream = await client.textToSpeech.convert(voiceId, {
     text: text.trim(),
-    modelId: "eleven_turbo_v2_5",
-    outputFormat: "mp3_44100_128",
+    modelId: TTS_MODEL_ID,
+    outputFormat: TTS_OUTPUT_FORMAT,
   });
 
   const chunks = [];
@@ -111,8 +126,12 @@ router.post("/tts", async (req, res) => {
       return res.status(400).json({ error: "Texto invalido" });
     }
 
-    // Truncar para que ElevenLabs no corte el audio a la mitad
-    const text = truncarParaTts(rawText);
+    // Limpiar markdown/emojis y truncar para eficiencia
+    const text = truncarParaTts(limpiarParaTts(rawText));
+
+    if (!text) {
+      return res.json(getTtsSkipResponse(voiceId, "text_empty_after_clean"));
+    }
 
     const key1 = process.env.ELEVENLABS_API_KEY2;
     const key2 = process.env.ELEVENLABS_API_KEY;
@@ -124,7 +143,6 @@ router.post("/tts", async (req, res) => {
     let audioBuffer = null;
     let usedKey = null;
 
-    // Intentar con ELEVENLABS_API_KEY2 primero
     if (key1) {
       try {
         audioBuffer = await convertTextToAudio(key1, voiceId, text);
@@ -132,14 +150,12 @@ router.post("/tts", async (req, res) => {
       } catch (err) {
         if (isElevenLabsNonBlockingError(err)) {
           console.warn(`TTS: KEY2 agotada/invalida (${getElevenLabsStatus(err)}), intentando KEY1...`);
-          audioBuffer = null;
         } else {
           throw err;
         }
       }
     }
 
-    // Fallback a ELEVENLABS_API_KEY si KEY2 fallo
     if (!audioBuffer && key2) {
       try {
         audioBuffer = await convertTextToAudio(key2, voiceId, text);
@@ -157,7 +173,7 @@ router.post("/tts", async (req, res) => {
       return res.json(getTtsSkipResponse(voiceId, "elevenlabs_unavailable"));
     }
 
-    console.log(`TTS generado con ${usedKey} (${text.length} chars de ${rawText.length} originales)`);
+    console.log(`TTS generado con ${usedKey}: ${text.length} chars (original: ${rawText.length})`);
 
     res.set({
       "Content-Type": "application/json; charset=utf-8",
