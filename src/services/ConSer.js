@@ -33,6 +33,14 @@ function normalizarNumeroPerfil(valor) {
   return Number.isFinite(numero) && numero > 0 ? numero : null;
 }
 
+function normalizarSexo(valor) {
+  if (!valor) return null;
+  const v = String(valor).trim().toLowerCase();
+  if (v === "m" || v === "masculino" || v === "hombre") return "masculino";
+  if (v === "f" || v === "femenino" || v === "mujer") return "femenino";
+  return null;
+}
+
 function normalizarPerfilUsuario(row) {
   if (!row) return null;
 
@@ -40,6 +48,7 @@ function normalizarPerfilUsuario(row) {
     edad: normalizarNumeroPerfil(row.edad),
     alturaCm: normalizarNumeroPerfil(row.alturaCm),
     pesoKg: normalizarNumeroPerfil(row.pesoKg),
+    sexo: normalizarSexo(row.sexo),
   };
 
   return Object.values(perfil).some((valor) => valor !== null) ? perfil : null;
@@ -69,9 +78,13 @@ export async function getPerfilUsuario(idUsuario) {
     process.env.MYSQL_USUARIO_PESO_COLUMN,
     "peso",
   );
+  const columnaSexo = sqlIdentifier(
+    process.env.MYSQL_USUARIO_SEXO_COLUMN,
+    "sexo",
+  );
 
   const [rows] = await pool.query(
-    `SELECT ${columnaEdad} AS edad, ${columnaAltura} AS alturaCm, ${columnaPeso} AS pesoKg
+    `SELECT ${columnaEdad} AS edad, ${columnaAltura} AS alturaCm, ${columnaPeso} AS pesoKg, ${columnaSexo} AS sexo
      FROM ${tablaUsuario}
      WHERE ${columnaId} = ?
      LIMIT 1`,
@@ -104,7 +117,6 @@ async function eliminarConversacionMasAntigua(conn, idUsuario) {
     [idAntigua],
   );
 
-  // Limpiar también el historial en MongoDB
   await eliminarHistorialMongo(idAntigua, idUsuario);
 
   console.info(`[ConSer] Conversacion ${idAntigua} eliminada automaticamente (limite alcanzado para usuario ${idUsuario})`);
@@ -145,7 +157,6 @@ export async function GetoCreateConvId(
       return conversaciones[0].id_conversacion;
     }
 
-    // Si se alcanza el limite, eliminar la conversacion mas antigua automaticamente
     if (conversaciones.length >= MAX_CONVERSACIONES_POR_USUARIO) {
       await eliminarConversacionMasAntigua(conn, idUsuarioNormalizado);
     }

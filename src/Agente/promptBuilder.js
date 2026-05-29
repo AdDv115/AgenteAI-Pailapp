@@ -14,11 +14,13 @@ function buildPerfilUsuario(perfilUsuario) {
   const edad = formatearNumeroPerfil(perfilUsuario?.edad);
   const alturaCm = formatearNumeroPerfil(perfilUsuario?.alturaCm);
   const pesoKg = formatearNumeroPerfil(perfilUsuario?.pesoKg);
+  const sexo = perfilUsuario?.sexo || null;
 
   const lineas = [
     edad ? `Edad: ${edad} anios` : null,
     alturaCm ? `Altura: ${alturaCm} cm` : null,
     pesoKg ? `Peso: ${pesoKg} kg` : null,
+    sexo ? `Sexo: ${sexo}` : null,
   ].filter(Boolean);
 
   if (!lineas.length) {
