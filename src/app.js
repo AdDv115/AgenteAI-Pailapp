@@ -5,8 +5,6 @@ import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import chatRouter from "./routes/chat-routes.js";
 import ttsRouter from "./routes/tts-routes.js";
 import tokenRouter from "./routes/token-routes.js";
-// IMAGEN: quita esta línea para desactivar la funcionalidad de imágenes
-import imagenRouter from "./routes/imagen-routes.js";
 
 const app = express();
 
@@ -43,8 +41,6 @@ app.get("/", (req, res) => {
 app.use("/api", chatRouter);
 app.use("/api", ttsRouter);
 app.use("/api", tokenRouter);
-// IMAGEN: quita esta línea para desactivar la funcionalidad de imágenes
-app.use("/api", imagenRouter);
 
 // manejo de JSON malformado
 app.use((err, req, res, next) => {
